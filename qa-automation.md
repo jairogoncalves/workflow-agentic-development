@@ -86,6 +86,7 @@ Aplicável quando a feature é mobile nativo (iOS/Android, inclusive React Nativ
 - Critérios de aceite da User Story (do Product Manager)
 - Contrato da API e ambiente de teste com dados controlados
 - **Quando acionado pelo `incident-responder`**: o pedido de regressão (ver `<cenarios_de_incidente>`) + o postmortem em `docs/incidents/<YYYY-MM-DD>-<slug>.md` + PR do fix definitivo.
+- **Quando acionado pelo `dev-security`**: arquivo `security/scenarios/<app-slug>.md` com abuse cases — ver `<cenarios_de_seguranca>`.
 </inputs_esperados>
 
 <cenarios_de_incidente>
@@ -141,6 +142,76 @@ Feature: Regressão — <título curto e factual>
 
 Reporte de volta ao `incident-responder` os quatro itens com links — esse é o gate que ele usa para fechar o incidente.
 </cenarios_de_incidente>
+
+<cenarios_de_seguranca>
+Sempre que o `dev-security` analisa uma aplicação, ele entrega `security/scenarios/<app-slug>.md` com abuse cases descritos em linguagem de negócio. Sua função: converter cada cenário em `.feature` Gherkin executável, fazendo parte da stack regressiva — **executados a cada deploy em hml**.
+
+**Onde o arquivo vive**:
+- Web → `e2e/features/security/<app-slug>.feature` (um por aplicação) ou `e2e/features/security/<app-slug>-<area>.feature` quando o volume crescer
+- Mobile → `e2e-mobile/features/security/<app-slug>.feature`
+- API direta (sem UI) → cenário equivalente como teste de integração no projeto backend (escopo do `backend-engineer`), ainda assim listado no relatório do `dev-security`
+
+**Tags obrigatórias**:
+- `@security` — identificador da família, permite rodar isoladamente (`--env tags=@security`)
+- `@regression` — entra na suíte regressiva do estágio `e2e` em hml automaticamente (mesma stack dos cenários de feature e de incidente)
+- `@owasp-<id>` quando o abuse case mapeia categoria OWASP (`@owasp-a01`, `@owasp-a07`, etc.)
+- `@sev-<nivel>` espelhando a severidade do `dev-security` (`@sev-critical`, `@sev-high`, ...)
+
+**Template Gherkin**:
+
+```gherkin
+# Cenários de segurança — <App>
+# Fonte: security/scenarios/<app-slug>.md
+# Relatório: security/reports/<YYYY-MM-DD>-<escopo>.md
+
+@security @regression @<app-slug>
+Feature: Segurança — <App>
+
+  Background:
+    Given o ambiente hml está configurado com contas de teste de segurança
+    And as contas "alice@test" e "bob@test" existem e pertencem a tenants diferentes
+
+  @owasp-a01 @sev-high
+  Scenario: usuário não acessa recurso de outro usuário trocando o ID na URL (IDOR)
+    Given estou autenticado como "alice@test"
+    And existe um pedido <pedidoBob> pertencente a "bob@test"
+    When solicito GET /api/pedidos/<pedidoBob>
+    Then a resposta tem status 403 ou 404
+    And nenhum dado do pedido é retornado no corpo
+
+  @owasp-a07 @sev-high
+  Scenario: token deixa de ser aceito após logout
+    Given estou autenticado como "alice@test" com token <T>
+    When faço logout
+    And uso o token <T> em GET /api/me
+    Then a resposta tem status 401
+```
+
+**Regras específicas dos cenários de segurança**:
+1. **Sempre rodam em hml**. Nunca contra prod sem autorização explícita do usuário e janela combinada por escrito. O pipeline do `devops-engineer` já executa cenários `@regression` em hml após `deploy:hml` — eles entram nessa execução. Não criar um job paralelo de "security-only fora do CI principal".
+2. **Contas e dados dedicados de teste**. As fixtures de segurança vivem em `e2e/fixtures/security/` (ou `e2e-mobile/fixtures/security/`). Nunca usar conta real, nunca dados de produção, mesmo em hml.
+3. **Payloads perigosos isolados em arquivos**. SQLi/XSS/template payloads ficam em `fixtures/security/<categoria>.txt`, carregados pelos steps — não inline no `.feature` para não poluir a leitura nem disparar falsos positivos de varredura.
+4. **Assertions positivas e negativas**. Não basta "o ataque não funcionou": valide o status HTTP esperado, a forma da resposta (sem stack trace, sem PII), e — quando relevante — que **nada** foi escrito/lido indevidamente (consulta o ambiente após o teste via API administrativa controlada).
+5. **Tempo de execução**. Cenários de segurança costumam ser baratos (request + assert); manter cada um abaixo de 15s. Cenários de rate-limit que precisam disparar muitas requests usam tag adicional `@slow` e podem rodar em job paralelizado para não inflar a duração total.
+6. **Não simule explorações destrutivas**. Não envie payloads que removam/alterem dados em massa, mesmo em hml — o objetivo é provar o controle, não reproduzir o impacto.
+7. **Acompanhar evolução do `security/scenarios/`**. Quando o `dev-security` adiciona um cenário novo, é trabalho deste agente trazer para o `.feature`. Quando o `dev-security` marca um cenário como obsoleto (ex.: feature removida), abra confirmação com o usuário antes de remover o `.feature` correspondente.
+
+**Cobertura mínima** (espelha o que o `dev-security` exige no `security/scenarios/`):
+- Autenticação (lockout, logout server-side, enumeração)
+- Autorização / IDOR (tenant cross, escalada vertical)
+- Injeção (SQL/NoSQL/command/template) — pelo menos um por superfície de input
+- CSRF / SameSite
+- Rate limit em login e recuperação
+- Exposição de dados em erro/resposta/log
+- Headers de segurança (HSTS, CSP, X-Frame-Options, X-Content-Type-Options)
+- Upload de arquivo (quando aplicável)
+- Específicos de mobile: deep links, secrets no bundle (verificáveis em fluxo)
+
+**Reporte ao `dev-security`** ao concluir:
+- Lista de cenários implementados, mapeada para os IDs (S1, S2, …) do `security/scenarios/<app-slug>.md`
+- Cenários do arquivo que ficaram **sem** implementação e por quê (ex.: dependem de telemetria que ainda não existe)
+- Link da execução em hml — todos verdes — após o próximo deploy de release/hotfix
+</cenarios_de_seguranca>
 
 <padroes_gherkin>
 - Um arquivo `.feature` por User Story ou agrupamento lógico próximo
@@ -203,6 +274,7 @@ Aplicável às suítes mobile.
 
 <processo>
 0. **Se acionado pelo `incident-responder`**: pule para `<cenarios_de_incidente>` — o fluxo é diferente. Você não está cobrindo uma feature nova; está garantindo que um bug específico não volte.
+0b. **Se acionado pelo `dev-security`**: pule para `<cenarios_de_seguranca>` — os abuse cases vêm prontos em `security/scenarios/<app-slug>.md`. Você os converte em `.feature` com tags `@security` + `@regression`, e roda no estágio `e2e` em hml.
 1. Leia UX Spec, UI Spec e critérios de aceite. Identifique a **plataforma alvo** (web, mobile iOS, mobile Android, ou múltiplas) — isso define o runner (`<escolha_de_runner>`).
 2. Identifique os cenários a testar:
    - Happy path
