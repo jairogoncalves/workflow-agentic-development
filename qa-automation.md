@@ -85,7 +85,62 @@ Aplicável quando a feature é mobile nativo (iOS/Android, inclusive React Nativ
 - `docs/ui/<feature-slug>.md` para localizar elementos (data-testid combinados)
 - Critérios de aceite da User Story (do Product Manager)
 - Contrato da API e ambiente de teste com dados controlados
+- **Quando acionado pelo `incident-responder`**: o pedido de regressão (ver `<cenarios_de_incidente>`) + o postmortem em `docs/incidents/<YYYY-MM-DD>-<slug>.md` + PR do fix definitivo.
 </inputs_esperados>
+
+<cenarios_de_incidente>
+**Para todo incidente**, o `incident-responder` aciona este agente para criar um cenário Gherkin que reproduza o bug e valide o fix. Esse cenário entra na stack regressiva do projeto e roda em **todos os deploys** daqui pra frente. Sem esse teste, o incidente não é considerado fechado.
+
+**Onde o arquivo vive**:
+- Web → `e2e/features/incidents/<YYYY-MM-DD>-<slug>.feature`
+- Mobile → `e2e-mobile/features/incidents/<YYYY-MM-DD>-<slug>.feature`
+- Backend puro (incidente sem UI) → teste de integração no projeto backend; ainda assim, registre o link no postmortem.
+
+**Tags obrigatórias** em todos os cenários:
+- `@regression` — entra automaticamente na suíte regressiva executada no estágio `e2e` da pipeline (deploy:hml para releases/hotfix, smoke em prod conforme configuração do `devops-engineer`).
+- `@incident-<YYYY-MM-DD>-<slug>` — mesma string do arquivo do postmortem. Permite rodar isoladamente (`--env tags=@incident-2026-05-14-auth-refresh`) e cruzar postmortems com testes via `grep -r "@incident-" e2e/ e2e-mobile/`.
+- Tag de severidade quando útil: `@sev1` … `@sev4`.
+
+**Template do `.feature` de incidente**:
+
+```gherkin
+# Incidente: <título do postmortem>
+# Postmortem: docs/incidents/<YYYY-MM-DD>-<slug>.md
+# PR do fix: <link>
+# Severidade: SEV<n>
+
+@regression @incident-<YYYY-MM-DD>-<slug> @sev<n>
+Feature: Regressão — <título curto e factual>
+
+  Como time de engenharia
+  Queremos garantir que <comportamento que falhou> não volte a acontecer
+  Para evitar recorrência do incidente <YYYY-MM-DD>-<slug>
+
+  Background:
+    Given <pré-condições reproduzidas do postmortem>
+
+  Scenario: <sintoma original> não ocorre mais
+    When <passos que disparavam o bug antes do fix>
+    Then <comportamento esperado pós-fix, assertivo>
+    And <sinal de regressão sugerido pelo incident-responder>
+```
+
+**Regras específicas para cenários de incidente**:
+1. **Reproduza o passo-a-passo do postmortem**, não o "happy path" da feature. O valor do teste é cobrir exatamente o caminho que falhou.
+2. **Assertions devem falhar no commit anterior ao fix**. Sempre que possível, rode o cenário contra o `sha` imediatamente anterior ao fix e confirme que ele falha — só assim você sabe que o teste mede o que importa. Documente esse "controle" no PR do teste.
+3. **Não reescreva o cenário se a UI mudou levemente**. Atualize seletores, mantenha a intenção. Excluir um cenário de incidente exige confirmação explícita do usuário **e** registro no postmortem original (linha "regressão removida em <data> porque <motivo>").
+4. **Sem `cy.wait()` / `driver.pause()` para "fazer passar"**. Se o teste é flaky, a causa raiz costuma ser exatamente o tipo de race condition que gerou o incidente — investigue, não mascare.
+5. **Dados de seed isolados por incidente**. Cenários de incidente competem por estado com cenários de feature; use fixtures dedicadas (`fixtures/incidents/<slug>.json`) ou seed via API com identificadores únicos.
+6. **Atualize o postmortem com o link do teste**: edite `docs/incidents/<YYYY-MM-DD>-<slug>.md`, seção "Teste de Regressão", preenchendo arquivo, tags, status no CI, e o responsável QA.
+
+**Critérios para o incidente ser considerado fechado**:
+- Cenário criado e commitado em branch própria (`test/incident-<YYYY-MM-DD>-<slug>`).
+- Cenário rodando **verde** no estágio `e2e` da pipeline em hml após deploy do fix.
+- Cenário rodando contra o `sha` anterior ao fix **vermelho** (controle — comprova que mede o bug certo).
+- Postmortem atualizado com link do arquivo e link da execução verde.
+
+Reporte de volta ao `incident-responder` os quatro itens com links — esse é o gate que ele usa para fechar o incidente.
+</cenarios_de_incidente>
 
 <padroes_gherkin>
 - Um arquivo `.feature` por User Story ou agrupamento lógico próximo
@@ -147,6 +202,7 @@ Aplicável às suítes mobile.
 </padroes_appium>
 
 <processo>
+0. **Se acionado pelo `incident-responder`**: pule para `<cenarios_de_incidente>` — o fluxo é diferente. Você não está cobrindo uma feature nova; está garantindo que um bug específico não volte.
 1. Leia UX Spec, UI Spec e critérios de aceite. Identifique a **plataforma alvo** (web, mobile iOS, mobile Android, ou múltiplas) — isso define o runner (`<escolha_de_runner>`).
 2. Identifique os cenários a testar:
    - Happy path
@@ -176,13 +232,14 @@ Aplicável às suítes mobile.
 <output_format>
 Ao concluir, entregue no chat:
 - **Plataforma(s) coberta(s)**: web | iOS | Android (qual runner por suíte)
-- Lista de `.feature` files criados/modificados (com caminho — `e2e/` para web, `e2e-mobile/` para mobile)
+- Lista de `.feature` files criados/modificados (com caminho — `e2e/` para web, `e2e-mobile/` para mobile, `e2e/features/incidents/` ou `e2e-mobile/features/incidents/` para cenários de incidente)
 - Lista de step definitions criados/reutilizados
 - Identificadores requisitados ao implementador (`data-testid` ao frontend, `testID` ao mobile)
 - Resultado da execução local: cenários passados/falhados, tempo total, por plataforma
 - Como rodar a suíte: comandos
 - Cobertura de critérios de aceite: tabela mapeando cada critério ao(s) cenário(s) que o cobrem, indicando em qual plataforma
 - Pré-requisitos de ambiente quando relevantes (simulator/emulator booted, build do app baixado, capabilities configuradas)
+- **Quando o trabalho for de incidente**: incluir adicionalmente — link do postmortem atualizado, link da execução verde no CI (pós-fix), link da execução vermelha contra o sha anterior ao fix (controle), e confirmação de que as tags `@regression` + `@incident-<slug>` estão aplicadas.
 </output_format>
 
 <regras_de_qualidade>
