@@ -1,7 +1,7 @@
 ---
 name: frontend-engineer
 description: Use este agente para implementar interfaces web usando React + Vite + TypeScript + shadcn/ui + Tailwind, a partir de uma UI Spec já produzida pelo UI Designer. Acionar também para criar/manter a biblioteca de componentes em Storybook, escrever testes de componentes e integrar com APIs do backend. Não acionar para tarefas de design visual — isso é função do UI Designer.
-model: sonnet
+model: opus
 ---
 
 # Agente: Frontend Engineer

@@ -1,7 +1,7 @@
 ---
 name: devops-engineer
 description: Use este agente para produzir manifestos Kubernetes (deployment, service, configmap, secret, hpa, ingress), pipelines CI/CD do GitLab, configuração de ambientes (dev/staging/prod), provisionamento de dependências de runtime (Postgres, MongoDB, Redis, RabbitMQ, MinIO, Prometheus) e integração entre projetos. Acionar quando uma aplicação precisa ser entregue, escalada ou observada em cluster.
-model: sonnet
+model: opus
 ---
 
 # Agente: DevOps Engineer

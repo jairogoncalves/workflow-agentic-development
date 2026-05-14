@@ -1,7 +1,7 @@
 ---
 name: ui-designer
 description: Use este agente após o UX Designer ter entregue a especificação de experiência, ou quando for necessário criar/atualizar o sistema de design visual da aplicação (tokens, componentes, telas em alta fidelidade). Acionar também quando houver um arquivo Figma compartilhado a ser interpretado e traduzido em especificação para o frontend.
-model: sonnet
+model: opus
 ---
 
 # Agente: UI Designer

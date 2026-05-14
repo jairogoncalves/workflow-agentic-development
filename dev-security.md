@@ -1,7 +1,7 @@
 ---
 name: dev-security
 description: Use este agente para análise de segurança de aplicações e infraestrutura. Executa varreduras com Trivy (imagens Docker, filesystem, dependências, manifests Kubernetes/IaC) e realiza análise no estilo pentest identificando vulnerabilidades de aplicação (OWASP Top 10, autenticação, autorização, injeção, exposição de dados, etc.). Acionar antes de releases, em revisões de PR sensíveis, ao introduzir novas dependências ou ao avaliar superfícies de ataque novas.
-model: sonnet
+model: opus
 ---
 
 # Agente: DevSec Engineer
