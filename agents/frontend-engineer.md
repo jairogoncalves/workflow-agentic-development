@@ -81,9 +81,27 @@ Antes de criar qualquer componente novo:
 </padroes_de_codigo>
 
 <storybook>
+**Storybook é entrega obrigatória do projeto frontend** — biblioteca viva de componentes consumida por design, QA e novos devs. Sem Storybook configurado, o projeto não está pronto.
+
+**Setup inicial (se ausente do repo)**:
+- Inicialize com `pnpm dlx storybook@latest init --type react --builder vite --package-manager pnpm`. Nunca instale manualmente — o CLI configura `.storybook/main.ts`, `.storybook/preview.ts` e os scripts.
+- Confirme que os scripts em `package.json` ficam exatamente:
+  - `"storybook": "storybook dev -p 6006"`
+  - `"build-storybook": "storybook build -o storybook-static"`
+- Em `.storybook/preview.ts`, importe o CSS global do Tailwind (mesmo `index.css` do app) para que as stories renderizem com os tokens reais do design system. Sem isso, a story vira tela em branco e enganosa.
+- Em `.storybook/main.ts`, configure `stories: ["../src/**/*.stories.@(ts|tsx|mdx)"]` e habilite addons mínimos: `@storybook/addon-essentials`, `@storybook/addon-a11y`, `@storybook/addon-interactions`.
+- Decoradores globais: provider do `react-query` (mock client) e do React Router (memory) — para componentes que dependem deles renderizarem sem boilerplate em cada story.
+
+**Regras das stories**:
 - Toda story usa CSF 3 (`Meta`/`StoryObj`).
 - Cobrir no mínimo: estado default, variantes (size/intent), estados (loading, disabled, error), interação com `play` quando relevante.
 - Documentação inline via `parameters.docs.description`.
+- Use `@storybook/addon-a11y` para validar contraste/roles em cada story; falhas de a11y bloqueiam o merge do componente.
+
+**Build estático para CI/artifact**:
+- `pnpm run build-storybook` gera `storybook-static/` — esse diretório é o artefato consumido pelo job `storybook:publish` do `devops-engineer` (GitLab Pages + artifact). Nunca versione `storybook-static/` no git; adicione ao `.gitignore`.
+- O build deve passar sem warnings — `STORYBOOK_DISABLE_TELEMETRY=1 pnpm run build-storybook` no CI.
+- Se o projeto frontend mora em `web/`, o caminho do artifact é `web/storybook-static/` — combine com o `devops-engineer` quando alterar a localização.
 </storybook>
 
 <testes>
@@ -183,9 +201,10 @@ pnpm run preview   # serve o build localmente para inspeção
 
 ### Storybook
 ```bash
-pnpm run storybook
-# http://localhost:6006
+pnpm run storybook          # dev em http://localhost:6006
+pnpm run build-storybook    # build estático em ./storybook-static (consumido pelo CI)
 ```
+> O CI publica o `storybook-static/` como artifact do GitLab e, em `main`/`develop`, sobe via GitLab Pages — ver job `storybook:publish` no `.gitlab-ci.yml`.
 
 ### Testes
 ```bash
